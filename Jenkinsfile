@@ -13,6 +13,9 @@ pipeline {
     options{
         timeout(time:48,unit:'HOURS')
         skipDefaultCheckout(true)
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '5'))
+        timestamps()
     }
     stages {
         stage('Prepare'){
@@ -131,9 +134,7 @@ def finalizeWorkflow(){
 
 def notifyBuild(bStatus) {
     def subject = "${bStatus}: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'"
-    def details = """<html><body><p>STARTED: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]':</p>
-    <p>Check console output at &QUOT;<a href='${env.BUILD_URL}'>${env.JOB_NAME} [${env.BUILD_NUMBER}]</a>&QUOT;</p></body></html>"""
-
+    def details = """STARTED: Job ${env.JOB_NAME} [${env.BUILD_NUMBER}]  \n Check console output at: ${env.BUILD_URL}"""
     mail to:"${env.DEVELOPERS_EMAIL}",subject:"${subject}",body:"${details}"
 }
 
