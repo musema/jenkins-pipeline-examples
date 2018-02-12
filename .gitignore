@@ -1,0 +1,8 @@
+/target
+.project
+.classpath
+.settings
+#maven release pluging files
+release.properties
+.backup
+pom.xml.releaseBackup
