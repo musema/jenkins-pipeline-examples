@@ -1,0 +1,123 @@
+def server    
+def buildInfo    
+def rtMaven
+
+pipeline{
+    agent any
+    tools {
+        maven "Maven-3.3.9"
+        jdk "Java-8"
+    }
+    environment{
+        DEVELOPERS_EMAIL="musema.hassen@gmail.com"
+        BUILD_FROM_BRANCH="master"
+        REPO_URL="https://github.com/musema/jenkins-pipeline-examples.git"
+    }
+    options{
+        timeout(time:48,unit:'HOURS')
+        skipDefaultCheckout(true)
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '5'))
+        timestamps()
+    }
+    stages{
+        stage ('Code-Checkout') {
+            steps{
+                 //git url: "${REPO_URL}"
+                 checkoutCode();
+            }
+        
+        }
+        stage ('Artifactory-Configuration') {
+            steps{
+                configureArtifactory();
+            }
+            
+        }
+                   
+        stage ('Install') {
+            steps{
+                rtMaven.run pom: 'pom.xml', goals: 'install', buildInfo: buildInfo
+            }
+        }
+        stage ('Test') {
+            steps{
+                rtMaven.run pom: 'pom.xml', goals: 'clean test'
+            }
+            
+        }
+        stage ('Deploy-To-Repo') {
+            steps{
+                rtMaven.deployer.deployArtifacts buildInfo
+            }
+            
+        }
+            
+        stage ('Publish-Build-Info') {
+            steps{
+                server.publishBuildInfo buildInfo
+            }   
+        }
+    }
+
+    post {
+        always {
+            finalizeWorkflow()
+        }
+        success {
+            successMessage()
+        }
+        failure {
+            failureMessage()
+        }
+    }
+}
+
+//define groovy functions here
+def prepareWorkspace(){
+    echo 'Check here if everything is ready to make a build'
+    sh 'mvn --version'
+    sh 'java -version'
+    sh 'git --version'
+}
+def checkoutCode(){
+    def count=1
+    retry(3){
+        echo "trying to checkout the code from SCM, Trial:${count}"
+        //git branch: "${BUILD_FROM_BRANCH}",credentialsId: "${GITHUB_CREDENTIALS_ID}",url: "${REPO_URL}"
+        git url:"${REPO_URL}"
+    }
+}
+def configureArtifactory(){
+    // Obtain an Artifactory server instance, defined in Jenkins --> Manage:
+    server = Artifactory.server SERVER_ID
+
+    rtMaven = Artifactory.newMavenBuild()
+    rtMaven.tool = MAVEN_TOOL // Tool name from Jenkins configuration
+    rtMaven.deployer releaseRepo: 'libs-release-local', snapshotRepo: 'libs-snapshot-local', server: server
+    rtMaven.resolver releaseRepo: 'libs-release', snapshotRepo: 'libs-snapshot', server: server
+    rtMaven.deployer.deployArtifacts = false // Disable artifacts deployment during Maven run
+
+    buildInfo = Artifactory.newBuildInfo()
+
+}
+def deployToServer(deployTo){
+    echo "We are deploying to : ${deployTo}"
+}
+def successMessage(){
+    echo "Sending SUCCESS email to ${env.DEVELOPERS_EMAIL}"
+    notifyBuild('SUCCESS')
+}
+def failureMessage(){
+    echo "Notifying build failure"
+    notifyBuild('FAILED')
+}
+def finalizeWorkflow(){
+    echo "Cleaning up the workspace"
+}
+
+def notifyBuild(bStatus) {
+    def subject = "${bStatus}: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'"
+    def details = """STARTED: Job ${env.JOB_NAME} [${env.BUILD_NUMBER}]  \n Check console output at: ${env.BUILD_URL}"""
+    mail to:"${env.DEVELOPERS_EMAIL}",subject:"${subject}",body:"${details}"
+}
